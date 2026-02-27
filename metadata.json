@@ -1,0 +1,5 @@
+{
+  "name": "n8n Chat Connect",
+  "description": "A modern, high-performance chat interface for n8n workflows with persistent history and session-based memory.",
+  "requestFramePermissions": []
+}

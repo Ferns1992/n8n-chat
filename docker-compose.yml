@@ -1,0 +1,16 @@
+services:
+  n8n-chat:
+    build: .
+    container_name: n8n-chat-app
+    ports:
+      - "3000:3000"
+    volumes:
+      - chat-data:/app/data
+    environment:
+      - NODE_ENV=production
+      # You can override the n8n webhook URL here if needed
+      # - N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/...
+    restart: unless-stopped
+
+volumes:
+  chat-data:
