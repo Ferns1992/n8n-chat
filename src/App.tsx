@@ -3,14 +3,9 @@ import {
   Send, 
   Plus, 
   MessageSquare, 
-  History, 
   Settings, 
-  MoreVertical, 
-  Bot, 
-  User,
   Loader2,
   Trash2,
-  ChevronLeft,
   Menu,
   Share,
   Info,
@@ -28,8 +23,6 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function App() {
-  const [user, setUser] = useState<{ email: string } | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,29 +31,9 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Check auth on mount
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/me');
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      }
-    } catch (e) {
-      console.error("Auth check failed", e);
-    } finally {
-      setIsCheckingAuth(false);
-    }
-  };
-
   // Load sessions from localStorage
   useEffect(() => {
-    if (!user) return;
-    const savedSessions = localStorage.getItem(`chat_sessions_${user.email}`);
+    const savedSessions = localStorage.getItem('chat_sessions');
     if (savedSessions) {
       const parsed = JSON.parse(savedSessions);
       setSessions(parsed);
@@ -78,21 +51,19 @@ export default function App() {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [user]);
+  }, []);
 
   // Save sessions to localStorage
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(`chat_sessions_${user.email}`, JSON.stringify(sessions));
-    }
-  }, [sessions, user]);
+    localStorage.setItem('chat_sessions', JSON.stringify(sessions));
+  }, [sessions]);
 
   // Load messages when session changes
   useEffect(() => {
-    if (currentSessionId && user) {
+    if (currentSessionId) {
       fetchHistory(currentSessionId);
     }
-  }, [currentSessionId, user]);
+  }, [currentSessionId]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -179,26 +150,6 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    await fetch('/api/logout', { method: 'POST' });
-    setUser(null);
-    setSessions([]);
-    setMessages([]);
-    setCurrentSessionId(null);
-  };
-
-  if (isCheckingAuth) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-black">
-        <Loader2 className="animate-spin text-blue-500" size={32} />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Login onLogin={checkAuth} />;
-  }
-
   return (
     <div className="flex h-screen bg-black text-white overflow-hidden font-sans">
       {/* Sidebar - iPadOS Style */}
@@ -252,12 +203,10 @@ export default function App() {
 
             <div className="p-4 border-t border-white/5 bg-black/20 backdrop-blur-md">
               <div 
-                onClick={handleLogout}
                 className="flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-white cursor-pointer transition-colors rounded-xl hover:bg-white/5"
               >
-                <User size={18} />
-                <span className="text-sm font-medium truncate flex-1">{user.email}</span>
-                <span className="text-[10px] text-zinc-600 font-bold uppercase">Logout</span>
+                <Settings size={18} />
+                <span className="text-sm font-medium">Settings</span>
               </div>
             </div>
           </motion.aside>
@@ -431,101 +380,6 @@ export default function App() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function Login({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('admin123');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (res.ok) {
-        onLogin();
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Login failed');
-      }
-    } catch (e) {
-      setError('Connection error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-screen w-screen flex items-center justify-center bg-black p-6">
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-[400px] space-y-8"
-      >
-        <div className="text-center space-y-2">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mx-auto mb-6">
-            <Sparkles size={40} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">n8n Chat</h1>
-          <p className="text-zinc-500">Sign in to your automation hub</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl px-5 py-4 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-zinc-600"
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl px-5 py-4 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-zinc-600"
-              required
-            />
-          </div>
-
-          {error && (
-            <motion.p 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-red-400 text-sm text-center font-medium"
-            >
-              {error}
-            </motion.p>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-white text-black font-bold py-4 rounded-2xl hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'Sign In'}
-          </button>
-        </form>
-
-        <p className="text-center text-zinc-600 text-xs uppercase tracking-widest font-bold">
-          Apple Design Language • PWA Ready
-        </p>
-      </motion.div>
     </div>
   );
 }

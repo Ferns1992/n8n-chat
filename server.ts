@@ -4,7 +4,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import Database from "better-sqlite3";
-import cookieParser from "cookie-parser";
 import fs from "fs";
 
 dotenv.config();
@@ -22,12 +21,6 @@ const db = new Database(path.join(dataDir, "chat.db"));
 
 // Initialize database
 db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sessionId TEXT NOT NULL,
@@ -35,9 +28,6 @@ db.exec(`
     content TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
-
-  -- Add a default user if not exists (password: admin123)
-  INSERT OR IGNORE INTO users (email, password) VALUES ('admin@example.com', 'admin123');
 `);
 
 async function startServer() {
@@ -45,60 +35,15 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
-  app.use(cookieParser());
-
-  // Simple Auth Middleware
-  const authenticate = (req: any, res: any, next: any) => {
-    const session = req.cookies.session;
-    if (!session) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    next();
-  };
-
-  // Auth Routes
-  app.post("/api/login", (req, res) => {
-    const { email, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(email, password) as any;
-
-    if (user) {
-      res.cookie("session", user.id, { 
-        httpOnly: true, 
-        secure: true, 
-        sameSite: 'none',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-      });
-      res.json({ id: user.id, email: user.email });
-    } else {
-      res.status(401).json({ error: "Invalid credentials" });
-    }
-  });
-
-  app.post("/api/logout", (req, res) => {
-    res.clearCookie("session");
-    res.json({ success: true });
-  });
-
-  app.get("/api/me", (req, res) => {
-    const sessionId = req.cookies.session;
-    if (!sessionId) return res.status(401).json({ error: "Not logged in" });
-    
-    const user = db.prepare("SELECT id, email FROM users WHERE id = ?").get(sessionId) as any;
-    if (user) {
-      res.json(user);
-    } else {
-      res.status(401).json({ error: "Session invalid" });
-    }
-  });
 
   // API Routes
-  app.get("/api/history/:sessionId", authenticate, (req, res) => {
+  app.get("/api/history/:sessionId", (req, res) => {
     const { sessionId } = req.params;
     const messages = db.prepare("SELECT role, content, timestamp FROM messages WHERE sessionId = ? ORDER BY timestamp ASC").all(sessionId);
     res.json(messages);
   });
 
-  app.post("/api/chat", authenticate, async (req, res) => {
+  app.post("/api/chat", async (req, res) => {
     const { sessionId, message } = req.body;
     const n8nWebhookUrl = "https://n8n.sysitadmin.com/webhook/9e5a8ed5-e4e3-4a79-828f-a05430652fab/chat";
 
