@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Trash2, Bot, User, Loader2, MessageSquare, Plus, Lock, LogIn, ShieldCheck } from 'lucide-react';
+import { Send, Trash2, Bot, User, Loader2, MessageSquare, Plus, Lock, LogIn, ShieldCheck, Search, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
@@ -18,6 +18,9 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change or loading state changes
@@ -73,9 +76,20 @@ export default function App() {
     if (!input.trim() || isLoading) return;
 
     const userContent = input.trim();
+    
+    // Create temporary user message for immediate UI update
+    const tempUserMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: userContent,
+      timestamp: new Date().toISOString()
+    };
+
+    setMessages(prev => [...prev, tempUserMessage]);
     setInput('');
     setIsLoading(true);
 
+    setError(null);
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -86,14 +100,23 @@ export default function App() {
       const contentType = response.headers.get("content-type");
       if (response.ok && contentType && contentType.includes("application/json")) {
         const data = await response.json();
-        setMessages(prev => [...prev, data.userMessage, data.assistantMessage]);
+        // Replace the temp message with the official one from server if needed, 
+        // or just append the assistant message. 
+        // Since the server returns both, we'll update the whole state or just append assistant.
+        // Let's just append the assistant message to avoid duplicates if we already added temp.
+        setMessages(prev => {
+          // Remove the temp message and add the official ones to ensure consistency (ids, timestamps)
+          const filtered = prev.filter(m => m.id !== tempUserMessage.id);
+          return [...filtered, data.userMessage, data.assistantMessage];
+        });
       } else {
         const errorText = await response.text();
         console.error('Failed to send message. Server returned:', errorText);
-        // Optionally show an error message in the UI
+        setError(`Server error: ${errorText.slice(0, 50)}${errorText.length > 50 ? '...' : ''}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send message:', error);
+      setError(`Connection error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -167,20 +190,104 @@ export default function App() {
     );
   }
 
+  const filteredMessages = messages.filter(msg => 
+    msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans selection:bg-blue-500/30">
+      {/* Error Toast */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl bg-red-500/90 text-white text-sm font-medium shadow-2xl backdrop-blur-md flex items-center gap-3 border border-red-400/20"
+          >
+            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+              <X size={12} />
+            </div>
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
-            <Bot size={24} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">n8n Chat Connect</h1>
-            <p className="text-xs text-zinc-500 font-medium">Connected to Workflow</p>
-          </div>
+          {!isSearchVisible && (
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-3"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
+                <Bot size={24} className="text-white" />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-semibold tracking-tight">n8n Chat Connect</h1>
+                <p className="text-xs text-zinc-500 font-medium">Connected to Workflow</p>
+              </div>
+            </motion.div>
+          )}
         </div>
+
+        <div className="flex-1 max-w-md px-4">
+          <AnimatePresence>
+            {isSearchVisible && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative"
+              >
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                <input
+                  autoFocus
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search messages..."
+                  className="w-full bg-zinc-900/50 border border-white/10 rounded-xl py-2 pl-10 pr-24 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-600/50 transition-all"
+                />
+                <div className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  {searchQuery && (
+                    <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded-md">
+                      {filteredMessages.length} {filteredMessages.length === 1 ? 'match' : 'matches'}
+                    </span>
+                  )}
+                  <button 
+                    onClick={() => {
+                      setIsSearchVisible(false);
+                      setSearchQuery('');
+                    }}
+                    className="text-zinc-500 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="flex items-center gap-2">
+          {!isSearchVisible && (
+            <button 
+              onClick={() => setIsSearchVisible(true)}
+              className="p-2.5 rounded-xl hover:bg-white/5 text-zinc-400 transition-all active:scale-95"
+              title="Search Messages"
+            >
+              <Search size={20} />
+            </button>
+          )}
           <button 
             onClick={clearHistory}
             disabled={isDeleting || messages.length === 0}
@@ -228,10 +335,23 @@ export default function App() {
               ))}
             </div>
           </div>
+        ) : filteredMessages.length === 0 && searchQuery ? (
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center">
+              <Search size={24} className="text-zinc-700" />
+            </div>
+            <p className="text-zinc-500">No messages found matching "{searchQuery}"</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="text-blue-500 text-sm hover:underline"
+            >
+              Clear search
+            </button>
+          </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-8">
             <AnimatePresence initial={false}>
-              {messages.map((msg) => (
+              {filteredMessages.map((msg) => (
                 <motion.div
                   key={msg.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -259,7 +379,7 @@ export default function App() {
                   </div>
                 </motion.div>
               ))}
-              {isLoading && (
+              {isLoading && !searchQuery && (
                 <motion.div 
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}

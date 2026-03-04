@@ -49,10 +49,11 @@ app.use((req, res, next) => {
   let sessionId = req.cookies.session_id;
   if (!sessionId) {
     sessionId = uuidv4();
+    const isProduction = process.env.NODE_ENV === "production";
     res.cookie("session_id", sessionId, { 
       httpOnly: true, 
-      secure: true, 
-      sameSite: 'none',
+      secure: isProduction, // Only secure in production (requires HTTPS)
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000 
     });
   }
@@ -86,50 +87,60 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     // Proxy to n8n if configured, otherwise mock response
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || "https://n8n.sysitadmin.com/webhook/9e5a8ed5-e4e3-4a79-828f-a05430652fab/chat";
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     
-    let assistantContent = "I'm sorry, I couldn't connect to the n8n workflow. Please check the N8N_WEBHOOK_URL environment variable.";
+    let assistantContent = "";
     
     if (n8nWebhookUrl) {
       try {
-        console.log(`Sending request to n8n: ${n8nWebhookUrl}`);
+        console.log(`[Chat] Sending request to n8n: ${n8nWebhookUrl}`);
+        const n8nPayload = { 
+          chatInput: content,
+          message: content,
+          content: content,
+          sessionId: sessionId,
+          action: "sendMessage",
+          timestamp: new Date().toISOString()
+        };
+        
         const response = await fetch(n8nWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            chatInput: content,
-            message: content, // Some workflows use 'message'
-            content: content,
-            sessionId: sessionId,
-            action: "sendMessage", // Common in n8n chat templates
-            timestamp: new Date().toISOString()
-          })
+          body: JSON.stringify(n8nPayload)
         });
         
-        console.log(`n8n response status: ${response.status}`);
+        console.log(`[Chat] n8n response status: ${response.status}`);
         
+        const contentType = response.headers.get("content-type");
         if (response.ok) {
-          const data = await response.json();
-          console.log("n8n response data:", JSON.stringify(data));
-          
-          // Handle various n8n response formats
-          if (Array.isArray(data) && data.length > 0) {
-            const firstItem = data[0];
-            assistantContent = firstItem.output || firstItem.response || firstItem.text || JSON.stringify(firstItem);
+          if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            console.log("[Chat] n8n JSON response:", JSON.stringify(data));
+            
+            // Handle various n8n response formats
+            if (Array.isArray(data) && data.length > 0) {
+              const firstItem = data[0];
+              assistantContent = firstItem.output || firstItem.response || firstItem.text || JSON.stringify(firstItem);
+            } else {
+              assistantContent = data.output || data.response || data.text || (typeof data === 'string' ? data : JSON.stringify(data));
+            }
           } else {
-            assistantContent = data.output || data.response || data.text || (typeof data === 'string' ? data : JSON.stringify(data));
+            // Handle non-JSON response (like plain text)
+            assistantContent = await response.text();
+            console.log("[Chat] n8n text response:", assistantContent);
           }
         } else {
           const errorText = await response.text();
-          console.error("n8n error response:", errorText);
-          assistantContent = `n8n returned an error (${response.status}). Please check your n8n workflow logs.`;
+          console.error("[Chat] n8n error response:", errorText);
+          assistantContent = `Error from n8n (${response.status}): ${errorText.slice(0, 100)}${errorText.length > 100 ? '...' : ''}`;
         }
-      } catch (fetchError) {
-        console.error("Fetch error to n8n:", fetchError);
-        assistantContent = "Failed to reach n8n webhook. Please ensure the n8n instance is online and the webhook is active.";
+      } catch (fetchError: any) {
+        console.error("[Chat] Fetch error to n8n:", fetchError);
+        assistantContent = `Failed to connect to n8n: ${fetchError.message}. Check if N8N_WEBHOOK_URL is correct and reachable.`;
       }
     } else {
-      assistantContent = "This is a demo response. To connect to n8n, please set the N8N_WEBHOOK_URL environment variable.";
+      console.log("[Chat] N8N_WEBHOOK_URL not set, using mock response");
+      assistantContent = "N8N_WEBHOOK_URL is not configured. Please set it in your environment variables to connect to your n8n workflow.";
     }
 
     // Save assistant message
@@ -174,7 +185,9 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[Server] Running on http://0.0.0.0:${PORT}`);
+    console.log(`[Server] NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`[Server] N8N_WEBHOOK_URL: ${process.env.N8N_WEBHOOK_URL || 'NOT SET'}`);
   });
 }
 

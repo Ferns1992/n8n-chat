@@ -8,8 +8,8 @@ services:
       - chat-data:/app/data
     environment:
       - NODE_ENV=production
-      # You can override the n8n webhook URL here if needed
-      # - N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/...
+      # Set your n8n webhook URL here
+      - N8N_WEBHOOK_URL=https://n8n.sysitadmin.com/webhook/9e5a8ed5-e4e3-4a79-828f-a05430652fab/chat
     restart: unless-stopped
 
 volumes:
