@@ -34,7 +34,10 @@ db.exec(`
 
 // Migration: Add session_id if missing
 const tableInfo = db.prepare("PRAGMA table_info(messages)").all();
+console.log("[Database] Current schema:", JSON.stringify(tableInfo, null, 2));
 const hasSessionId = tableInfo.some((col: any) => col.name === 'session_id');
+const idColumn = tableInfo.find((col: any) => col.name === 'id');
+const isIdInteger = idColumn && idColumn.type.toUpperCase().includes('INT');
 
 if (!hasSessionId) {
   console.log("Adding session_id column to messages table...");
@@ -78,12 +81,27 @@ app.post("/api/chat", async (req, res) => {
 
   // Save user message
   const userMsgId = uuidv4();
-  db.prepare("INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)").run(
-    userMsgId,
-    sessionId,
-    "user",
-    content
-  );
+  console.log(`[Chat] Saving user message: id=${userMsgId}, sessionId=${sessionId}, content=${content}`);
+  
+  try {
+    if (isIdInteger) {
+      db.prepare("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)").run(
+        sessionId || null,
+        "user",
+        content
+      );
+    } else {
+      db.prepare("INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)").run(
+        userMsgId,
+        sessionId || null,
+        "user",
+        content
+      );
+    }
+  } catch (dbError) {
+    console.error("[Chat] Database error saving user message:", dbError);
+    throw dbError;
+  }
 
   try {
     // Proxy to n8n if configured, otherwise mock response
@@ -145,12 +163,26 @@ app.post("/api/chat", async (req, res) => {
 
     // Save assistant message
     const assistantMsgId = uuidv4();
-    db.prepare("INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)").run(
-      assistantMsgId,
-      sessionId,
-      "assistant",
-      assistantContent
-    );
+    console.log(`[Chat] Saving assistant message: id=${assistantMsgId}, sessionId=${sessionId}, content=${assistantContent.slice(0, 50)}...`);
+    
+    try {
+      if (isIdInteger) {
+        db.prepare("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)").run(
+          sessionId || null,
+          "assistant",
+          assistantContent
+        );
+      } else {
+        db.prepare("INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)").run(
+          assistantMsgId,
+          sessionId || null,
+          "assistant",
+          assistantContent
+        );
+      }
+    } catch (dbError) {
+      console.error("[Chat] Database error saving assistant message:", dbError);
+    }
 
     const now = new Date().toISOString();
     res.json({ 
