@@ -3,7 +3,7 @@ services:
     build: .
     container_name: n8n-chat-app
     ports:
-      - "3000:3000"
+      - "4090:4090"
     volumes:
       - chat-data:/app/data
     environment:
